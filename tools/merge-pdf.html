@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gộp PDF - ConvertTool</title>
+  <meta name="description" content="Gộp nhiều file PDF thành một file duy nhất, miễn phí, xử lý trực tiếp trên trình duyệt." />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">🔗 Gộp PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Gộp nhiều PDF thành một</h1>
+        <p>Kéo thả để sắp xếp thứ tự trước khi gộp.</p>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">🔗</div>
+        <h3>Kéo thả các file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn nhiều file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" multiple hidden />
+      </div>
+
+      <!-- File list -->
+      <div class="file-list" id="fileList"></div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <!-- Action bar -->
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa tất cả</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">+ Thêm PDF</button>
+          <span id="fileCount" style="font-size:0.9rem;color:var(--text-muted)"></span>
+        </div>
+        <button class="btn btn-success" id="mergeBtn" onclick="mergePDFs()">🔗 Gộp PDF</button>
+      </div>
+
+      <!-- Result -->
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Gộp PDF thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống PDF</button>
+          <button class="btn btn-secondary" onclick="clearAll()">Gộp tiếp</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script>
+    const { PDFDocument } = PDFLib;
+
+    let files = [];
+
+    const dropZone     = document.getElementById('dropZone');
+    const fileInput    = document.getElementById('fileInput');
+    const fileListEl   = document.getElementById('fileList');
+    const actionBar    = document.getElementById('actionBar');
+    const fileCountEl  = document.getElementById('fileCount');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar  = document.getElementById('progressBar');
+    const progressLabel= document.getElementById('progressLabel');
+    const resultSection= document.getElementById('resultSection');
+    const resultDesc   = document.getElementById('resultDesc');
+    const mergeBtn     = document.getElementById('mergeBtn');
+    const downloadBtn  = document.getElementById('downloadBtn');
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      addFiles([...e.dataTransfer.files]);
+    });
+    fileInput.addEventListener('change', () => { addFiles([...fileInput.files]); fileInput.value=''; });
+
+    function addFiles(newFiles) {
+      const valid = newFiles.filter(f => f.type === 'application/pdf');
+      if (valid.length !== newFiles.length) showToast('Bỏ qua file không phải PDF', 'error');
+      valid.forEach(f => files.push({ file: f, name: f.name, size: f.size, pageCount: '...' }));
+      renderList();
+      // Load page counts async
+      valid.forEach((f, i) => {
+        const idx = files.length - valid.length + i;
+        f.arrayBuffer().then(buf => PDFDocument.load(buf)).then(doc => {
+          files[idx].pageCount = doc.getPageCount();
+          updateFileItem(idx);
+        }).catch(() => { files[idx].pageCount = '?'; updateFileItem(idx); });
+      });
+    }
+
+    function updateFileItem(idx) {
+      const el = fileListEl.querySelector(`[data-index="${idx}"] .file-size`);
+      if (el) el.textContent = `${formatSize(files[idx].size)} · ${files[idx].pageCount} trang`;
+    }
+
+    function renderList() {
+      if (files.length === 0) {
+        fileListEl.innerHTML = '';
+        actionBar.style.display = 'none';
+        resultSection.classList.remove('active');
+        return;
+      }
+      actionBar.style.display = 'flex';
+      fileCountEl.textContent = `${files.length} file`;
+      fileListEl.innerHTML = files.map((f, i) => `
+        <div class="file-item" draggable="true" data-index="${i}"
+          ondragstart="dragStart(event,${i})" ondragover="dragOver(event,${i})"
+          ondragend="dragEnd(event)">
+          <span class="drag-handle">⠿</span>
+          <div class="file-thumb-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name">${f.name}</div>
+            <div class="file-size">${formatSize(f.size)} · ${f.pageCount} trang</div>
+          </div>
+          <span style="font-size:0.85rem;color:var(--text-muted);min-width:60px;text-align:right">Thứ ${i+1}</span>
+          <button class="btn btn-danger" onclick="removeFile(${i})">✕</button>
+        </div>
+      `).join('');
+    }
+
+    let dragIdx = null;
+    function dragStart(e, i) { dragIdx = i; e.currentTarget.classList.add('dragging'); }
+    function dragOver(e, i) {
+      e.preventDefault();
+      if (dragIdx === null || dragIdx === i) return;
+      const moved = files.splice(dragIdx, 1)[0];
+      files.splice(i, 0, moved);
+      dragIdx = i;
+      renderList();
+    }
+    function dragEnd(e) { dragIdx = null; e.currentTarget && e.currentTarget.classList.remove('dragging'); }
+    function removeFile(i) { files.splice(i, 1); renderList(); }
+    function clearAll() { files = []; renderList(); progressWrap.classList.remove('active'); }
+
+    async function mergePDFs() {
+      if (files.length < 2) { showToast('Cần ít nhất 2 file PDF để gộp', 'error'); return; }
+      mergeBtn.disabled = true;
+      resultSection.classList.remove('active');
+      progressWrap.classList.add('active');
+      setProgress(0, 'Đang khởi tạo...');
+
+      try {
+        const merged = await PDFDocument.create();
+        let totalPages = 0;
+
+        for (let i = 0; i < files.length; i++) {
+          setProgress(Math.round((i / files.length) * 90), `Đang gộp file ${i+1}/${files.length}: ${files[i].name}`);
+          const bytes = await files[i].file.arrayBuffer();
+          const doc = await PDFDocument.load(bytes);
+          const pages = await merged.copyPages(doc, doc.getPageIndices());
+          pages.forEach(p => merged.addPage(p));
+          totalPages += doc.getPageCount();
+        }
+
+        setProgress(95, 'Đang lưu...');
+        const pdfBytes = await merged.save();
+        setProgress(100, 'Hoàn thành!');
+
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const dlUrl = URL.createObjectURL(blob);
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = dlUrl; a.download = 'merged.pdf'; a.click();
+        };
+
+        resultDesc.textContent = `${files.length} file · ${totalPages} trang · ${formatSize(pdfBytes.byteLength)}`;
+        resultSection.classList.add('active');
+        showToast('Gộp PDF thành công!', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Lỗi khi gộp PDF: ' + err.message, 'error');
+      } finally {
+        mergeBtn.disabled = false;
+        setTimeout(() => progressWrap.classList.remove('active'), 1500);
+      }
+    }
+
+    function setProgress(pct, label) {
+      progressBar.style.width = pct + '%';
+      progressLabel.textContent = label;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.className = 'toast show' + (type ? ' ' + type : '');
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+  </script>
+</body>
+</html>

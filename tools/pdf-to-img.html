@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chuyển PDF sang ảnh - ConvertTool</title>
+  <meta name="description" content="Chuyển từng trang PDF thành ảnh PNG hoặc JPG miễn phí, xử lý trực tiếp trên trình duyệt." />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">📄 PDF → Ảnh</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Chuyển PDF sang ảnh</h1>
+        <p>Mỗi trang PDF sẽ được xuất thành một ảnh riêng (PNG hoặc JPG).</p>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">📄</div>
+        <h3>Kéo thả file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+
+      <!-- Options -->
+      <div class="options-row" id="optionsRow" style="display:none">
+        <label>Định dạng:</label>
+        <select id="imgFormat">
+          <option value="png">PNG (chất lượng cao)</option>
+          <option value="jpeg">JPG (file nhỏ hơn)</option>
+        </select>
+        <label>Độ phân giải:</label>
+        <select id="dpi">
+          <option value="1">72 DPI (màn hình)</option>
+          <option value="2" selected>150 DPI (thường dùng)</option>
+          <option value="3">220 DPI (in ấn)</option>
+        </select>
+        <label>Trang:</label>
+        <select id="pageRange">
+          <option value="all">Tất cả trang</option>
+          <option value="custom">Chọn trang...</option>
+        </select>
+        <div id="customPageWrap" style="display:none">
+          <input type="text" id="customPages" placeholder="VD: 1,3,5-8" style="width:120px" />
+        </div>
+      </div>
+
+      <!-- File info -->
+      <div id="fileInfo" style="display:none;margin-top:16px">
+        <div class="file-item" style="cursor:default">
+          <div class="file-thumb-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name" id="pdfName"></div>
+            <div class="file-size" id="pdfMeta"></div>
+          </div>
+          <button class="btn btn-danger" onclick="clearAll()">✕</button>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <!-- Action bar -->
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa</button>
+          <span id="pageCountLabel" style="font-size:0.9rem;color:var(--text-muted)"></span>
+        </div>
+        <button class="btn btn-success" id="convertBtn" onclick="convertToImages()">⬇ Xuất ảnh</button>
+      </div>
+
+      <!-- Preview -->
+      <div id="previewSection" style="display:none;margin-top:32px">
+        <h3 style="margin-bottom:12px;font-size:1rem">Xem trước các trang</h3>
+        <div class="preview-grid" id="previewGrid"></div>
+      </div>
+
+      <!-- Result -->
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Xuất ảnh thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống (ZIP)</button>
+          <button class="btn btn-secondary" onclick="clearAll()">Chuyển đổi tiếp</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- JSZip CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pdfDoc = null;
+    let pdfFile = null;
+    let renderedPages = []; // base64 data URLs
+
+    const dropZone     = document.getElementById('dropZone');
+    const fileInput    = document.getElementById('fileInput');
+    const optionsRow   = document.getElementById('optionsRow');
+    const fileInfo     = document.getElementById('fileInfo');
+    const actionBar    = document.getElementById('actionBar');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar  = document.getElementById('progressBar');
+    const progressLabel= document.getElementById('progressLabel');
+    const resultSection= document.getElementById('resultSection');
+    const previewSection=document.getElementById('previewSection');
+    const previewGrid  = document.getElementById('previewGrid');
+    const pageCountLabel=document.getElementById('pageCountLabel');
+    const pdfNameEl    = document.getElementById('pdfName');
+    const pdfMetaEl    = document.getElementById('pdfMeta');
+    const convertBtn   = document.getElementById('convertBtn');
+    const downloadBtn  = document.getElementById('downloadBtn');
+
+    document.getElementById('pageRange').addEventListener('change', e => {
+      document.getElementById('customPageWrap').style.display = e.target.value === 'custom' ? 'flex' : 'none';
+    });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const f = [...e.dataTransfer.files].find(f => f.type === 'application/pdf');
+      if (f) loadPDF(f); else showToast('Vui lòng chọn file PDF', 'error');
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadPDF(fileInput.files[0]); });
+
+    async function loadPDF(file) {
+      pdfFile = file;
+      const arrayBuffer = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      pdfNameEl.textContent = file.name;
+      pdfMetaEl.textContent = `${formatSize(file.size)} · ${pdfDoc.numPages} trang`;
+      pageCountLabel.textContent = `${pdfDoc.numPages} trang`;
+      fileInfo.style.display = 'block';
+      actionBar.style.display = 'flex';
+      optionsRow.style.display = 'flex';
+      resultSection.classList.remove('active');
+      // Load preview (first 6 pages)
+      await loadPreview();
+    }
+
+    async function loadPreview() {
+      previewGrid.innerHTML = '';
+      const count = Math.min(pdfDoc.numPages, 6);
+      previewSection.style.display = 'block';
+      const scale = 0.6;
+      for (let i = 1; i <= count; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const div = document.createElement('div');
+        div.className = 'preview-grid-item';
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL();
+        const label = document.createElement('span');
+        label.className = 'page-label';
+        label.textContent = `Trang ${i}`;
+        div.appendChild(img); div.appendChild(label);
+        previewGrid.appendChild(div);
+      }
+      if (pdfDoc.numPages > 6) {
+        const more = document.createElement('div');
+        more.style.cssText = 'display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:0.9rem;padding:20px';
+        more.textContent = `+${pdfDoc.numPages - 6} trang nữa`;
+        previewGrid.appendChild(more);
+      }
+    }
+
+    function parsePageRange(str, total) {
+      const pages = new Set();
+      str.split(',').forEach(part => {
+        part = part.trim();
+        if (part.includes('-')) {
+          const [a, b] = part.split('-').map(Number);
+          for (let i = a; i <= Math.min(b, total); i++) if (i >= 1) pages.add(i);
+        } else {
+          const n = parseInt(part);
+          if (n >= 1 && n <= total) pages.add(n);
+        }
+      });
+      return [...pages].sort((a, b) => a - b);
+    }
+
+    async function convertToImages() {
+      if (!pdfDoc) return;
+      convertBtn.disabled = true;
+      resultSection.classList.remove('active');
+      renderedPages = [];
+
+      const format    = document.getElementById('imgFormat').value;
+      const scale     = parseInt(document.getElementById('dpi').value);
+      const rangeType = document.getElementById('pageRange').value;
+      let pages;
+      if (rangeType === 'custom') {
+        const customStr = document.getElementById('customPages').value;
+        pages = parsePageRange(customStr, pdfDoc.numPages);
+        if (pages.length === 0) { showToast('Không có trang hợp lệ', 'error'); convertBtn.disabled = false; return; }
+      } else {
+        pages = Array.from({length: pdfDoc.numPages}, (_, i) => i + 1);
+      }
+
+      progressWrap.classList.add('active');
+      setProgress(0, 'Đang xử lý...');
+
+      try {
+        const zip = new JSZip();
+        for (let idx = 0; idx < pages.length; idx++) {
+          const pageNum = pages[idx];
+          setProgress(Math.round((idx / pages.length) * 90), `Đang xử lý trang ${pageNum}/${pdfDoc.numPages}...`);
+          const page = await pdfDoc.getPage(pageNum);
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width; canvas.height = viewport.height;
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+          const dataUrl = canvas.toDataURL(mimeType, 0.92);
+          const base64 = dataUrl.split(',')[1];
+          const ext = format === 'jpeg' ? 'jpg' : 'png';
+          zip.file(`page_${String(pageNum).padStart(3,'0')}.${ext}`, base64, { base64: true });
+          renderedPages.push({ dataUrl, pageNum });
+        }
+
+        setProgress(95, 'Đang đóng gói...');
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        setProgress(100, 'Hoàn thành!');
+
+        const dlUrl = URL.createObjectURL(zipBlob);
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = dlUrl;
+          a.download = (pdfFile.name.replace('.pdf','') || 'pages') + '_images.zip';
+          a.click();
+        };
+
+        const ext = format === 'jpeg' ? 'JPG' : 'PNG';
+        resultSection.querySelector('#resultDesc').textContent = `${pages.length} ảnh ${ext}`;
+        resultSection.classList.add('active');
+        showToast('Xuất ảnh thành công!', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Lỗi: ' + err.message, 'error');
+      } finally {
+        convertBtn.disabled = false;
+        setTimeout(() => progressWrap.classList.remove('active'), 1500);
+      }
+    }
+
+    function clearAll() {
+      pdfDoc = null; pdfFile = null; renderedPages = [];
+      fileInfo.style.display = 'none';
+      actionBar.style.display = 'none';
+      optionsRow.style.display = 'none';
+      previewSection.style.display = 'none';
+      resultSection.classList.remove('active');
+      progressWrap.classList.remove('active');
+      previewGrid.innerHTML = '';
+      fileInput.value = '';
+    }
+
+    function setProgress(pct, label) {
+      progressBar.style.width = pct + '%';
+      progressLabel.textContent = label;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.className = 'toast show' + (type ? ' ' + type : '');
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tách PDF - ConvertTool</title>
+  <meta name="description" content="Tách các trang PDF thành từng file riêng lẻ hoặc theo khoảng trang, miễn phí, xử lý trực tiếp trên trình duyệt." />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">✂️ Tách PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Tách PDF</h1>
+        <p>Tách từng trang thành file riêng, hoặc chỉ định khoảng trang cần giữ lại.</p>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">✂️</div>
+        <h3>Kéo thả file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+
+      <!-- File info -->
+      <div id="fileInfoBlock" style="display:none;margin-top:16px">
+        <div class="file-item" style="cursor:default">
+          <div class="file-thumb-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name" id="pdfName"></div>
+            <div class="file-size" id="pdfMeta"></div>
+          </div>
+          <button class="btn btn-danger" onclick="clearAll()">✕</button>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div class="options-row" id="optionsRow" style="display:none">
+        <label>Chế độ tách:</label>
+        <select id="splitMode" onchange="updateSplitMode()">
+          <option value="all">Mỗi trang thành 1 file</option>
+          <option value="range">Trích xuất khoảng trang</option>
+          <option value="fixed">Chia đều theo số trang</option>
+        </select>
+
+        <div id="rangeWrap" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+          <label>Trang:</label>
+          <input type="text" id="rangeInput" placeholder="VD: 1-3, 5, 7-9" style="width:160px" />
+          <span style="font-size:0.82rem;color:var(--text-muted)">Xuất thành 1 file</span>
+        </div>
+
+        <div id="fixedWrap" style="display:none;align-items:center;gap:8px">
+          <label>Số trang mỗi file:</label>
+          <input type="number" id="fixedInput" value="1" min="1" style="width:70px" />
+        </div>
+      </div>
+
+      <!-- Preview page grid -->
+      <div id="previewSection" style="display:none;margin-top:24px">
+        <h3 style="margin-bottom:12px;font-size:1rem;color:var(--text-muted)">Xem trước (6 trang đầu)</h3>
+        <div class="preview-grid" id="previewGrid"></div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <!-- Action bar -->
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa</button>
+          <span id="splitPreviewLabel" style="font-size:0.9rem;color:var(--text-muted)"></span>
+        </div>
+        <button class="btn btn-success" id="splitBtn" onclick="splitPDF()">✂️ Tách PDF</button>
+      </div>
+
+      <!-- Result -->
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Tách PDF thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống (ZIP)</button>
+          <button class="btn btn-secondary" onclick="clearAll()">Tách tiếp</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    const { PDFDocument } = PDFLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pdfFileBytes = null;
+    let pdfFilename  = '';
+    let pdfFileSize  = 0;
+    let totalPages   = 0;
+    let pdfJsDoc     = null;
+
+    const dropZone      = document.getElementById('dropZone');
+    const fileInput     = document.getElementById('fileInput');
+    const fileInfoBlock = document.getElementById('fileInfoBlock');
+    const optionsRow    = document.getElementById('optionsRow');
+    const actionBar     = document.getElementById('actionBar');
+    const progressWrap  = document.getElementById('progressWrap');
+    const progressBar   = document.getElementById('progressBar');
+    const progressLabel = document.getElementById('progressLabel');
+    const resultSection = document.getElementById('resultSection');
+    const resultDesc    = document.getElementById('resultDesc');
+    const splitBtn      = document.getElementById('splitBtn');
+    const downloadBtn   = document.getElementById('downloadBtn');
+    const previewSection= document.getElementById('previewSection');
+    const previewGrid   = document.getElementById('previewGrid');
+    const splitPreviewLabel = document.getElementById('splitPreviewLabel');
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const f = [...e.dataTransfer.files].find(f => f.type === 'application/pdf');
+      if (f) loadFile(f); else showToast('Vui lòng chọn file PDF', 'error');
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+    async function loadFile(file) {
+      const buf = await file.arrayBuffer();
+      pdfFileBytes = new Uint8Array(buf);
+      pdfFilename  = file.name.replace('.pdf', '');
+      pdfFileSize  = file.size;
+      const doc    = await PDFDocument.load(pdfFileBytes);
+      totalPages   = doc.getPageCount();
+      pdfJsDoc     = await pdfjsLib.getDocument({ data: pdfFileBytes.slice() }).promise;
+
+      document.getElementById('pdfName').textContent = file.name;
+      document.getElementById('pdfMeta').textContent = `${formatSize(pdfFileSize)} · ${totalPages} trang`;
+      document.getElementById('fixedInput').max = totalPages;
+      fileInfoBlock.style.display = 'block';
+      optionsRow.style.display = 'flex';
+      actionBar.style.display = 'flex';
+      updateSplitMode();
+      resultSection.classList.remove('active');
+      loadPreview();
+    }
+
+    async function loadPreview() {
+      previewGrid.innerHTML = '';
+      previewSection.style.display = 'block';
+      const count = Math.min(totalPages, 6);
+      for (let i = 1; i <= count; i++) {
+        const page = await pdfJsDoc.getPage(i);
+        const viewport = page.getViewport({ scale: 0.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const div = document.createElement('div');
+        div.className = 'preview-grid-item';
+        const img = document.createElement('img'); img.src = canvas.toDataURL();
+        const label = document.createElement('span'); label.className = 'page-label'; label.textContent = `Trang ${i}`;
+        div.appendChild(img); div.appendChild(label);
+        previewGrid.appendChild(div);
+      }
+      if (totalPages > 6) {
+        const more = document.createElement('div');
+        more.style.cssText = 'display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:0.9rem;padding:20px';
+        more.textContent = `+${totalPages - 6} trang nữa`;
+        previewGrid.appendChild(more);
+      }
+    }
+
+    function updateSplitMode() {
+      const mode = document.getElementById('splitMode').value;
+      document.getElementById('rangeWrap').style.display  = mode === 'range'  ? 'flex' : 'none';
+      document.getElementById('fixedWrap').style.display  = mode === 'fixed'  ? 'flex' : 'none';
+      updatePreviewLabel();
+    }
+
+    function updatePreviewLabel() {
+      if (!totalPages) return;
+      const mode = document.getElementById('splitMode').value;
+      if (mode === 'all') splitPreviewLabel.textContent = `→ Tạo ${totalPages} file PDF`;
+      else if (mode === 'range') splitPreviewLabel.textContent = '→ Tạo 1 file PDF';
+      else {
+        const n = Math.max(1, parseInt(document.getElementById('fixedInput').value) || 1);
+        splitPreviewLabel.textContent = `→ Tạo ${Math.ceil(totalPages / n)} file PDF`;
+      }
+    }
+    document.getElementById('fixedInput').addEventListener('input', updatePreviewLabel);
+    document.getElementById('rangeInput').addEventListener('input', updatePreviewLabel);
+
+    function parsePageRange(str, total) {
+      const pages = new Set();
+      str.split(',').forEach(part => {
+        part = part.trim();
+        if (part.includes('-')) {
+          let [a, b] = part.split('-').map(Number);
+          b = Math.min(b, total);
+          for (let i = a; i <= b; i++) if (i >= 1) pages.add(i);
+        } else {
+          const n = parseInt(part);
+          if (n >= 1 && n <= total) pages.add(n);
+        }
+      });
+      return [...pages].sort((a, b) => a - b);
+    }
+
+    async function splitPDF() {
+      if (!pdfFileBytes) return;
+      splitBtn.disabled = true;
+      resultSection.classList.remove('active');
+      progressWrap.classList.add('active');
+      setProgress(0, 'Đang đọc file...');
+
+      const mode = document.getElementById('splitMode').value;
+      const zip = new JSZip();
+
+      try {
+        const srcDoc = await PDFDocument.load(pdfFileBytes);
+        let groups = []; // array of page-index arrays (0-based)
+
+        if (mode === 'all') {
+          groups = Array.from({ length: totalPages }, (_, i) => [i]);
+        } else if (mode === 'range') {
+          const str = document.getElementById('rangeInput').value;
+          const pages = parsePageRange(str, totalPages);
+          if (pages.length === 0) { showToast('Không có trang hợp lệ', 'error'); splitBtn.disabled = false; progressWrap.classList.remove('active'); return; }
+          groups = [pages.map(p => p - 1)]; // 0-based
+        } else {
+          const n = Math.max(1, parseInt(document.getElementById('fixedInput').value) || 1);
+          for (let i = 0; i < totalPages; i += n) {
+            const group = [];
+            for (let j = i; j < Math.min(i + n, totalPages); j++) group.push(j);
+            groups.push(group);
+          }
+        }
+
+        for (let gi = 0; gi < groups.length; gi++) {
+          setProgress(Math.round((gi / groups.length) * 90), `Đang tách phần ${gi + 1}/${groups.length}...`);
+          const group = groups[gi];
+          const newDoc = await PDFDocument.create();
+          const copied = await newDoc.copyPages(srcDoc, group);
+          copied.forEach(p => newDoc.addPage(p));
+          const bytes = await newDoc.save();
+          let fname;
+          if (mode === 'all') fname = `${pdfFilename}_trang_${group[0]+1}.pdf`;
+          else if (mode === 'range') fname = `${pdfFilename}_trich_xuat.pdf`;
+          else fname = `${pdfFilename}_phan_${gi+1}.pdf`;
+          zip.file(fname, bytes);
+        }
+
+        setProgress(95, 'Đang đóng gói...');
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        setProgress(100, 'Hoàn thành!');
+
+        const dlUrl = URL.createObjectURL(zipBlob);
+        downloadBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = dlUrl; a.download = pdfFilename + '_split.zip'; a.click();
+        };
+
+        resultDesc.textContent = `${groups.length} file PDF`;
+        resultSection.classList.add('active');
+        showToast('Tách PDF thành công!', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Lỗi: ' + err.message, 'error');
+      } finally {
+        splitBtn.disabled = false;
+        setTimeout(() => progressWrap.classList.remove('active'), 1500);
+      }
+    }
+
+    function clearAll() {
+      pdfFileBytes = null; pdfFilename = ''; pdfFileSize = 0; totalPages = 0; pdfJsDoc = null;
+      fileInfoBlock.style.display = 'none';
+      optionsRow.style.display = 'none';
+      actionBar.style.display = 'none';
+      previewSection.style.display = 'none';
+      resultSection.classList.remove('active');
+      progressWrap.classList.remove('active');
+      previewGrid.innerHTML = '';
+      fileInput.value = '';
+    }
+
+    function setProgress(pct, label) {
+      progressBar.style.width = pct + '%';
+      progressLabel.textContent = label;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.className = 'toast show' + (type ? ' ' + type : '');
+      setTimeout(() => t.className = 'toast', 3000);
+    }
+  </script>
+</body>
+</html>
