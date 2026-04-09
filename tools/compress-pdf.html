@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nén PDF - ConvertTool</title>
+  <meta name="description" content="Giảm dung lượng file PDF miễn phí, xử lý trực tiếp trên trình duyệt." />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">🗜️ Nén PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Nén PDF</h1>
+        <p>Giảm dung lượng file PDF bằng cách nén ảnh bên trong. Xử lý trực tiếp trên trình duyệt.</p>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">🗜️</div>
+        <h3>Kéo thả file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+
+      <div id="fileInfoBlock" style="display:none;margin-top:16px">
+        <div class="file-item" style="cursor:default">
+          <div class="file-thumb-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name" id="pdfName"></div>
+            <div class="file-size" id="pdfMeta"></div>
+          </div>
+          <button class="btn btn-danger" onclick="clearAll()">✕</button>
+        </div>
+      </div>
+
+      <div class="options-row" id="optionsRow" style="display:none">
+        <label>Mức nén:</label>
+        <select id="compressLevel">
+          <option value="high">Cao — dung lượng nhỏ nhất (ảnh chất lượng thấp)</option>
+          <option value="medium" selected>Trung bình — cân bằng tốt</option>
+          <option value="low">Thấp — giữ chất lượng cao</option>
+        </select>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa</button>
+        </div>
+        <button class="btn btn-success" id="compressBtn" onclick="compressPDF()">🗜️ Nén PDF</button>
+      </div>
+
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Nén thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống</button>
+          <button class="btn btn-secondary" onclick="clearAll()">Nén file khác</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer"><div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div></footer>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    const { PDFDocument, rgb } = PDFLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pdfBytes = null, origSize = 0, fileName = '';
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const f = [...e.dataTransfer.files].find(f => f.type === 'application/pdf');
+      if (f) loadFile(f); else showToast('Vui lòng chọn file PDF', 'error');
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+    async function loadFile(file) {
+      const buf = await file.arrayBuffer();
+      pdfBytes = new Uint8Array(buf);
+      origSize = file.size;
+      fileName = file.name.replace('.pdf','');
+      document.getElementById('pdfName').textContent = file.name;
+      document.getElementById('pdfMeta').textContent = formatSize(file.size);
+      document.getElementById('fileInfoBlock').style.display = 'block';
+      document.getElementById('optionsRow').style.display = 'flex';
+      document.getElementById('actionBar').style.display = 'flex';
+      document.getElementById('resultSection').classList.remove('active');
+    }
+
+    async function compressPDF() {
+      if (!pdfBytes) return;
+      const level = document.getElementById('compressLevel').value;
+      const quality = level === 'high' ? 0.4 : level === 'medium' ? 0.65 : 0.85;
+      const scale   = level === 'high' ? 1.2 : level === 'medium' ? 1.5 : 2;
+
+      document.getElementById('compressBtn').disabled = true;
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.add('active');
+      setProgress(0, 'Đang đọc PDF...');
+
+      try {
+        // Re-render each page via pdf.js then rebuild with pdf-lib (lossy image compression)
+        const pdfJsDoc = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
+        const newDoc = await PDFDocument.create();
+        const total = pdfJsDoc.numPages;
+
+        for (let i = 1; i <= total; i++) {
+          setProgress(Math.round((i-1)/total*85), `Đang nén trang ${i}/${total}...`);
+          const page = await pdfJsDoc.getPage(i);
+          const vp = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = vp.width; canvas.height = vp.height;
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+          const jpegBytes = await canvasToJpeg(canvas, quality);
+          const img = await newDoc.embedJpg(jpegBytes);
+          // Use original page dimensions (scale back)
+          const origVp = page.getViewport({ scale: 1 });
+          const pdfPage = newDoc.addPage([origVp.width, origVp.height]);
+          pdfPage.drawImage(img, { x: 0, y: 0, width: origVp.width, height: origVp.height });
+        }
+
+        setProgress(95, 'Đang lưu...');
+        const out = await newDoc.save();
+        setProgress(100, 'Hoàn thành!');
+
+        const saved = origSize - out.byteLength;
+        const pct = ((saved / origSize) * 100).toFixed(1);
+        const blob = new Blob([out], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        document.getElementById('downloadBtn').onclick = () => {
+          const a = document.createElement('a'); a.href = url; a.download = fileName + '_compressed.pdf'; a.click();
+        };
+
+        document.getElementById('resultDesc').textContent =
+          saved > 0
+            ? `${formatSize(origSize)} → ${formatSize(out.byteLength)} · Giảm ${pct}%`
+            : `${formatSize(out.byteLength)} · File đã được tối ưu (không giảm thêm được)`;
+        document.getElementById('resultSection').classList.add('active');
+        showToast('Nén PDF thành công!', 'success');
+      } catch(err) {
+        console.error(err); showToast('Lỗi: ' + err.message, 'error');
+      } finally {
+        document.getElementById('compressBtn').disabled = false;
+        setTimeout(() => document.getElementById('progressWrap').classList.remove('active'), 1500);
+      }
+    }
+
+    function canvasToJpeg(canvas, quality) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+          blob.arrayBuffer().then(buf => resolve(new Uint8Array(buf)));
+        }, 'image/jpeg', quality);
+      });
+    }
+
+    function clearAll() {
+      pdfBytes = null; origSize = 0; fileName = '';
+      document.getElementById('fileInfoBlock').style.display = 'none';
+      document.getElementById('optionsRow').style.display = 'none';
+      document.getElementById('actionBar').style.display = 'none';
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.remove('active');
+      fileInput.value = '';
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressLabel').textContent = label;
+    }
+
+    function formatSize(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+      return (b/1048576).toFixed(2) + ' MB';
+    }
+
+    function showToast(msg, type='') {
+      const t = document.getElementById('toast');
+      t.textContent = msg; t.className = 'toast show' + (type?' '+type:'');
+      setTimeout(() => t.className='toast', 3000);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bảo vệ & Mở khóa PDF - ConvertTool</title>
+  <meta name="description" content="Đặt mật khẩu bảo vệ PDF hoặc mở khóa PDF đã bị khóa, miễn phí." />
+  <link rel="stylesheet" href="../css/style.css" />
+  <style>
+    .tab-bar { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:28px; }
+    .tab-btn { padding:12px 28px; font-size:.95rem; font-weight:600; border:none; background:none; cursor:pointer; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-2px; transition:.2s; }
+    .tab-btn.active { color:var(--primary); border-bottom-color:var(--primary); }
+    .tab-panel { display:none; } .tab-panel.active { display:block; }
+    .pw-input { width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:1rem; outline:none; transition:border .2s; }
+    .pw-input:focus { border-color:var(--primary); }
+    .pw-strength { height:4px; border-radius:100px; margin-top:6px; background:var(--border); overflow:hidden; }
+    .pw-strength-bar { height:100%; border-radius:100px; transition:width .3s, background .3s; width:0%; }
+  </style>
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">🔒 Bảo vệ / Mở khóa PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Bảo vệ & Mở khóa PDF</h1>
+        <p>Đặt mật khẩu để bảo vệ PDF, hoặc xóa mật khẩu khỏi PDF đã biết mật khẩu.</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('protect')">🔒 Đặt mật khẩu</button>
+        <button class="tab-btn" onclick="switchTab('unlock')">🔓 Mở khóa PDF</button>
+      </div>
+
+      <!-- TAB: Protect -->
+      <div class="tab-panel active" id="tab-protect">
+        <div class="drop-zone" id="dropZone-protect">
+          <div class="drop-icon">🔒</div>
+          <h3>Kéo thả file PDF vào đây</h3>
+          <p>hoặc nhấn để chọn file PDF cần đặt mật khẩu</p>
+          <button class="btn btn-primary" onclick="document.getElementById('fileInput-protect').click()">Chọn file PDF</button>
+          <input type="file" id="fileInput-protect" accept="application/pdf" hidden />
+        </div>
+
+        <div id="fileInfo-protect" style="display:none;margin-top:16px">
+          <div class="file-item" style="cursor:default">
+            <div class="file-thumb-icon">📄</div>
+            <div class="file-info">
+              <div class="file-name" id="pdfName-protect"></div>
+              <div class="file-size" id="pdfMeta-protect"></div>
+            </div>
+            <button class="btn btn-danger" onclick="clearTab('protect')">✕</button>
+          </div>
+        </div>
+
+        <div id="pwOptions" style="display:none;margin-top:20px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <div style="margin-bottom:16px">
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Mật khẩu mở file</label>
+            <input type="password" class="pw-input" id="pw1" placeholder="Nhập mật khẩu..." oninput="checkStrength()" />
+            <div class="pw-strength"><div class="pw-strength-bar" id="pwBar"></div></div>
+            <div id="pwHint" style="font-size:.8rem;color:var(--text-muted);margin-top:4px"></div>
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Xác nhận mật khẩu</label>
+            <input type="password" class="pw-input" id="pw2" placeholder="Nhập lại mật khẩu..." />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:8px">Quyền hạn (tùy chọn)</label>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer">
+                <input type="checkbox" id="allowPrint" checked /> Cho phép in
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:.9rem;cursor:pointer">
+                <input type="checkbox" id="allowCopy" /> Cho phép sao chép nội dung
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-bar" id="actionBar-protect" style="display:none">
+          <div class="action-bar-left">
+            <button class="btn btn-secondary" onclick="clearTab('protect')">Xóa</button>
+          </div>
+          <button class="btn btn-success" id="protectBtn" onclick="protectPDF()">🔒 Đặt mật khẩu</button>
+        </div>
+      </div>
+
+      <!-- TAB: Unlock -->
+      <div class="tab-panel" id="tab-unlock">
+        <div class="drop-zone" id="dropZone-unlock">
+          <div class="drop-icon">🔓</div>
+          <h3>Kéo thả file PDF đã khóa vào đây</h3>
+          <p>hoặc nhấn để chọn file PDF cần mở khóa</p>
+          <button class="btn btn-primary" onclick="document.getElementById('fileInput-unlock').click()">Chọn file PDF</button>
+          <input type="file" id="fileInput-unlock" accept="application/pdf" hidden />
+        </div>
+
+        <div id="fileInfo-unlock" style="display:none;margin-top:16px">
+          <div class="file-item" style="cursor:default">
+            <div class="file-thumb-icon">🔒</div>
+            <div class="file-info">
+              <div class="file-name" id="pdfName-unlock"></div>
+              <div class="file-size" id="pdfMeta-unlock"></div>
+            </div>
+            <button class="btn btn-danger" onclick="clearTab('unlock')">✕</button>
+          </div>
+        </div>
+
+        <div id="unlockPwOptions" style="display:none;margin-top:20px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Mật khẩu hiện tại của file</label>
+          <input type="password" class="pw-input" id="unlockPw" placeholder="Nhập mật khẩu cần mở khóa..." />
+          <p style="font-size:.82rem;color:var(--text-muted);margin-top:8px">⚠️ Chỉ có thể mở khóa nếu bạn biết mật khẩu. Công cụ này không bẻ khóa PDF.</p>
+        </div>
+
+        <div class="action-bar" id="actionBar-unlock" style="display:none">
+          <div class="action-bar-left">
+            <button class="btn btn-secondary" onclick="clearTab('unlock')">Xóa</button>
+          </div>
+          <button class="btn btn-success" id="unlockBtn" onclick="unlockPDF()">🔓 Mở khóa</button>
+        </div>
+      </div>
+
+      <!-- Shared: Progress & Result -->
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <div class="result-section" id="resultSection">
+        <div class="result-icon" id="resultIcon">✅</div>
+        <h3 id="resultTitle">Thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống</button>
+          <button class="btn btn-secondary" onclick="resultSection.classList.remove('active')">Đóng</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer"><div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div></footer>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script>
+    const { PDFDocument } = PDFLib;
+
+    let protectBytes = null, protectName = '';
+    let unlockBytes  = null, unlockName  = '';
+
+    // Tab switching
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='protect')||(i===1&&tab==='unlock')));
+      document.getElementById('tab-protect').classList.toggle('active', tab==='protect');
+      document.getElementById('tab-unlock').classList.toggle('active', tab==='unlock');
+      document.getElementById('resultSection').classList.remove('active');
+    }
+
+    // Protect drag/drop
+    setupDrop('protect');
+    setupDrop('unlock');
+
+    function setupDrop(type) {
+      const dz = document.getElementById('dropZone-'+type);
+      const fi = document.getElementById('fileInput-'+type);
+      dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+      dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+      dz.addEventListener('drop', e => {
+        e.preventDefault(); dz.classList.remove('drag-over');
+        const f = [...e.dataTransfer.files].find(f => f.type==='application/pdf');
+        if (f) loadFile(type, f); else showToast('Vui lòng chọn file PDF','error');
+      });
+      fi.addEventListener('change', () => { if(fi.files[0]) loadFile(type, fi.files[0]); });
+    }
+
+    async function loadFile(type, file) {
+      const buf = await file.arrayBuffer();
+      if (type === 'protect') {
+        protectBytes = new Uint8Array(buf); protectName = file.name.replace('.pdf','');
+        document.getElementById('pdfName-protect').textContent = file.name;
+        document.getElementById('pdfMeta-protect').textContent = formatSize(file.size);
+        document.getElementById('fileInfo-protect').style.display = 'block';
+        document.getElementById('pwOptions').style.display = 'block';
+        document.getElementById('actionBar-protect').style.display = 'flex';
+      } else {
+        unlockBytes = new Uint8Array(buf); unlockName = file.name.replace('.pdf','');
+        document.getElementById('pdfName-unlock').textContent = file.name;
+        document.getElementById('pdfMeta-unlock').textContent = formatSize(file.size);
+        document.getElementById('fileInfo-unlock').style.display = 'block';
+        document.getElementById('unlockPwOptions').style.display = 'block';
+        document.getElementById('actionBar-unlock').style.display = 'flex';
+      }
+      document.getElementById('resultSection').classList.remove('active');
+    }
+
+    function checkStrength() {
+      const pw = document.getElementById('pw1').value;
+      const bar = document.getElementById('pwBar');
+      const hint = document.getElementById('pwHint');
+      let score = 0;
+      if (pw.length >= 8) score++;
+      if (/[A-Z]/.test(pw)) score++;
+      if (/[0-9]/.test(pw)) score++;
+      if (/[^A-Za-z0-9]/.test(pw)) score++;
+      const colors = ['#ef4444','#f97316','#eab308','#22c55e'];
+      const labels = ['Rất yếu','Yếu','Trung bình','Mạnh'];
+      bar.style.width = (score*25)+'%';
+      bar.style.background = colors[Math.max(0,score-1)] || '#ef4444';
+      hint.textContent = pw ? labels[Math.max(0,score-1)] : '';
+    }
+
+    async function protectPDF() {
+      if (!protectBytes) return;
+      const pw1 = document.getElementById('pw1').value;
+      const pw2 = document.getElementById('pw2').value;
+      if (!pw1) { showToast('Vui lòng nhập mật khẩu','error'); return; }
+      if (pw1 !== pw2) { showToast('Mật khẩu không khớp','error'); return; }
+
+      document.getElementById('protectBtn').disabled = true;
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.add('active');
+      setProgress(10, 'Đang tải PDF...');
+
+      try {
+        const doc = await PDFDocument.load(protectBytes);
+        setProgress(50, 'Đang mã hóa...');
+        const out = await doc.save({
+          userPassword: pw1,
+          ownerPassword: pw1 + '_owner',
+          permissions: {
+            printing: document.getElementById('allowPrint').checked ? 'highResolution' : 'none',
+            copying: document.getElementById('allowCopy').checked,
+            modifying: false,
+            annotating: false,
+          }
+        });
+        setProgress(100, 'Hoàn thành!');
+        const blob = new Blob([out], {type:'application/pdf'});
+        const url = URL.createObjectURL(blob);
+        document.getElementById('downloadBtn').onclick = () => {
+          const a=document.createElement('a');a.href=url;a.download=protectName+'_protected.pdf';a.click();
+        };
+        document.getElementById('resultIcon').textContent = '🔒';
+        document.getElementById('resultTitle').textContent = 'Đặt mật khẩu thành công!';
+        document.getElementById('resultDesc').textContent = `${formatSize(out.byteLength)} · File đã được bảo vệ bằng mật khẩu`;
+        document.getElementById('resultSection').classList.add('active');
+        showToast('Đặt mật khẩu thành công!','success');
+      } catch(err) {
+        showToast('Lỗi: '+err.message,'error');
+      } finally {
+        document.getElementById('protectBtn').disabled = false;
+        setTimeout(() => document.getElementById('progressWrap').classList.remove('active'), 1500);
+      }
+    }
+
+    async function unlockPDF() {
+      if (!unlockBytes) return;
+      const pw = document.getElementById('unlockPw').value;
+      document.getElementById('unlockBtn').disabled = true;
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.add('active');
+      setProgress(10, 'Đang tải PDF...');
+      try {
+        const doc = await PDFDocument.load(unlockBytes, { password: pw });
+        setProgress(70, 'Đang lưu không mật khẩu...');
+        const out = await doc.save();
+        setProgress(100, 'Hoàn thành!');
+        const blob = new Blob([out], {type:'application/pdf'});
+        const url = URL.createObjectURL(blob);
+        document.getElementById('downloadBtn').onclick = () => {
+          const a=document.createElement('a');a.href=url;a.download=unlockName+'_unlocked.pdf';a.click();
+        };
+        document.getElementById('resultIcon').textContent = '🔓';
+        document.getElementById('resultTitle').textContent = 'Mở khóa thành công!';
+        document.getElementById('resultDesc').textContent = `${formatSize(out.byteLength)} · Mật khẩu đã được gỡ bỏ`;
+        document.getElementById('resultSection').classList.add('active');
+        showToast('Mở khóa PDF thành công!','success');
+      } catch(err) {
+        const msg = err.message.includes('password') || err.message.includes('encrypt')
+          ? 'Sai mật khẩu hoặc file không bị khóa' : err.message;
+        showToast('Lỗi: '+msg,'error');
+      } finally {
+        document.getElementById('unlockBtn').disabled = false;
+        setTimeout(() => document.getElementById('progressWrap').classList.remove('active'), 1500);
+      }
+    }
+
+    function clearTab(type) {
+      if (type==='protect') {
+        protectBytes=null; protectName='';
+        document.getElementById('fileInfo-protect').style.display='none';
+        document.getElementById('pwOptions').style.display='none';
+        document.getElementById('actionBar-protect').style.display='none';
+        document.getElementById('pw1').value=''; document.getElementById('pw2').value='';
+        document.getElementById('fileInput-protect').value='';
+      } else {
+        unlockBytes=null; unlockName='';
+        document.getElementById('fileInfo-unlock').style.display='none';
+        document.getElementById('unlockPwOptions').style.display='none';
+        document.getElementById('actionBar-unlock').style.display='none';
+        document.getElementById('unlockPw').value='';
+        document.getElementById('fileInput-unlock').value='';
+      }
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.remove('active');
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progressBar').style.width=pct+'%';
+      document.getElementById('progressLabel').textContent=label;
+    }
+    function formatSize(b) {
+      if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(2)+' MB';
+    }
+    function showToast(msg,type='') {
+      const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+      setTimeout(()=>t.className='toast',3000);
+    }
+  </script>
+</body>
+</html>

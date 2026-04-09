@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Watermark PDF - ConvertTool</title>
+  <meta name="description" content="Thêm chữ hoặc hình mờ (watermark) vào PDF miễn phí." />
+  <link rel="stylesheet" href="../css/style.css" />
+  <style>
+    .preview-canvas { width:100%; max-width:400px; border:1px solid var(--border); border-radius:10px; display:block; margin:0 auto; }
+    .color-row { display:flex; align-items:center; gap:8px; }
+    .color-row input[type=color]{ width:40px; height:32px; border:1px solid var(--border); border-radius:6px; cursor:pointer; padding:2px; }
+  </style>
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">💧 Watermark PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Thêm Watermark vào PDF</h1>
+        <p>Thêm chữ mờ vào tất cả các trang PDF. Tùy chỉnh màu, kích thước, độ mờ và vị trí.</p>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">💧</div>
+        <h3>Kéo thả file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+
+      <div id="fileInfoBlock" style="display:none;margin-top:16px">
+        <div class="file-item" style="cursor:default">
+          <div class="file-thumb-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name" id="pdfName"></div>
+            <div class="file-size" id="pdfMeta"></div>
+          </div>
+          <button class="btn btn-danger" onclick="clearAll()">✕</button>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div id="optionsBlock" style="display:none;margin-top:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Nội dung watermark</label>
+            <input type="text" id="wmText" value="CONFIDENTIAL" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:.95rem" oninput="updatePreview()" />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Kiểu hiển thị</label>
+            <select id="wmMode" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem" onchange="updatePreview()">
+              <option value="diagonal">Chéo (góc 45°)</option>
+              <option value="center">Giữa trang</option>
+              <option value="tile">Lặp lại (tile)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Màu chữ</label>
+            <div class="color-row">
+              <input type="color" id="wmColor" value="#cc0000" oninput="updatePreview()" />
+              <span id="wmColorHex" style="font-size:.85rem;color:var(--text-muted)">#cc0000</span>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Độ mờ: <span id="opacityVal">30</span>%</label>
+            <input type="range" id="wmOpacity" min="5" max="80" value="30" style="width:100%" oninput="document.getElementById('opacityVal').textContent=this.value;updatePreview()" />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Kích thước chữ: <span id="sizeVal">60</span></label>
+            <input type="range" id="wmSize" min="20" max="120" value="60" style="width:100%" oninput="document.getElementById('sizeVal').textContent=this.value;updatePreview()" />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Áp dụng cho trang</label>
+            <select id="wmPages" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem">
+              <option value="all">Tất cả trang</option>
+              <option value="first">Chỉ trang đầu</option>
+              <option value="odd">Trang lẻ</option>
+              <option value="even">Trang chẵn</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div style="margin-top:16px;text-align:center">
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:8px">Xem trước trang 1</p>
+          <canvas id="previewCanvas" class="preview-canvas" width="400" height="560"></canvas>
+        </div>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa</button>
+        </div>
+        <button class="btn btn-success" id="applyBtn" onclick="applyWatermark()">💧 Thêm Watermark</button>
+      </div>
+
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Thêm watermark thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống</button>
+          <button class="btn btn-secondary" onclick="clearAll()">File khác</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer"><div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div></footer>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    const { PDFDocument, rgb, degrees, StandardFonts } = PDFLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let srcBytes = null, fileName = '', pdfJsDoc = null, previewDataUrl = null;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const f = [...e.dataTransfer.files].find(f => f.type === 'application/pdf');
+      if (f) loadFile(f); else showToast('Vui lòng chọn file PDF', 'error');
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+    document.getElementById('wmColor').addEventListener('input', function() {
+      document.getElementById('wmColorHex').textContent = this.value;
+    });
+
+    async function loadFile(file) {
+      const buf = await file.arrayBuffer();
+      srcBytes = new Uint8Array(buf);
+      fileName = file.name.replace('.pdf','');
+      pdfJsDoc = await pdfjsLib.getDocument({ data: srcBytes.slice() }).promise;
+      document.getElementById('pdfName').textContent = file.name;
+      document.getElementById('pdfMeta').textContent = `${formatSize(file.size)} · ${pdfJsDoc.numPages} trang`;
+      document.getElementById('fileInfoBlock').style.display = 'block';
+      document.getElementById('optionsBlock').style.display = 'block';
+      document.getElementById('actionBar').style.display = 'flex';
+      document.getElementById('resultSection').classList.remove('active');
+      await renderPreview();
+    }
+
+    async function renderPreview() {
+      const page = await pdfJsDoc.getPage(1);
+      const vp = page.getViewport({ scale: 1 });
+      const scale = 400 / vp.width;
+      const scaledVp = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = scaledVp.width; canvas.height = scaledVp.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledVp }).promise;
+      previewDataUrl = canvas.toDataURL();
+      updatePreview();
+    }
+
+    function updatePreview() {
+      if (!previewDataUrl) return;
+      const canvas = document.getElementById('previewCanvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width; canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        drawWatermarkOnCanvas(ctx, canvas.width, canvas.height);
+      };
+      img.src = previewDataUrl;
+    }
+
+    function drawWatermarkOnCanvas(ctx, w, h) {
+      const text    = document.getElementById('wmText').value || 'WATERMARK';
+      const mode    = document.getElementById('wmMode').value;
+      const color   = document.getElementById('wmColor').value;
+      const opacity = parseInt(document.getElementById('wmOpacity').value) / 100;
+      const size    = parseInt(document.getElementById('wmSize').value);
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.fillStyle = color;
+      ctx.font = `bold ${size}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      if (mode === 'diagonal') {
+        ctx.translate(w/2, h/2); ctx.rotate(-Math.PI/4);
+        ctx.fillText(text, 0, 0);
+      } else if (mode === 'center') {
+        ctx.fillText(text, w/2, h/2);
+      } else {
+        // tile
+        const step = Math.max(size*5, 180);
+        for (let y = 0; y < h + step; y += step) {
+          for (let x = 0; x < w + step; x += step) {
+            ctx.save(); ctx.translate(x, y); ctx.rotate(-Math.PI/5);
+            ctx.fillText(text, 0, 0); ctx.restore();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    function hexToRgb(hex) {
+      const r = parseInt(hex.slice(1,3),16)/255;
+      const g = parseInt(hex.slice(3,5),16)/255;
+      const b = parseInt(hex.slice(5,7),16)/255;
+      return { r, g, b };
+    }
+
+    async function applyWatermark() {
+      if (!srcBytes) return;
+      document.getElementById('applyBtn').disabled = true;
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.add('active');
+      setProgress(0, 'Đang khởi tạo...');
+
+      const text    = document.getElementById('wmText').value || 'WATERMARK';
+      const mode    = document.getElementById('wmMode').value;
+      const color   = hexToRgb(document.getElementById('wmColor').value);
+      const opacity = parseInt(document.getElementById('wmOpacity').value) / 100;
+      const size    = parseInt(document.getElementById('wmSize').value);
+      const pages   = document.getElementById('wmPages').value;
+
+      try {
+        const doc  = await PDFDocument.load(srcBytes);
+        const font = await doc.embedFont(StandardFonts.HelveticaBold);
+        const allPages = doc.getPages();
+        const total = allPages.length;
+
+        const shouldApply = (i) => {
+          if (pages === 'all') return true;
+          if (pages === 'first') return i === 0;
+          if (pages === 'odd') return i % 2 === 0;
+          if (pages === 'even') return i % 2 === 1;
+          return true;
+        };
+
+        allPages.forEach((page, i) => {
+          setProgress(Math.round(i/total*85), `Trang ${i+1}/${total}...`);
+          if (!shouldApply(i)) return;
+          const { width, height } = page.getSize();
+          const c = rgb(color.r, color.g, color.b);
+
+          const drawText = (x, y, rot) => {
+            page.drawText(text, { x, y, size, font, color: c, opacity, rotate: degrees(rot) });
+          };
+
+          if (mode === 'diagonal') {
+            drawText(width*0.15, height*0.4, 45);
+          } else if (mode === 'center') {
+            const tw = font.widthOfTextAtSize(text, size);
+            drawText((width - tw) / 2, height / 2, 0);
+          } else {
+            const stepX = Math.max(size*6, 180), stepY = stepX;
+            for (let y = 0; y < height + stepY; y += stepY)
+              for (let x = 0; x < width + stepX; x += stepX)
+                drawText(x, y, 30);
+          }
+        });
+
+        setProgress(95, 'Đang lưu...');
+        const out = await doc.save();
+        setProgress(100, 'Hoàn thành!');
+
+        const blob = new Blob([out], { type:'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        document.getElementById('downloadBtn').onclick = () => {
+          const a = document.createElement('a'); a.href=url; a.download=fileName+'_watermark.pdf'; a.click();
+        };
+        document.getElementById('resultDesc').textContent = `${total} trang · ${formatSize(out.byteLength)}`;
+        document.getElementById('resultSection').classList.add('active');
+        showToast('Thêm watermark thành công!', 'success');
+      } catch(err) {
+        showToast('Lỗi: '+err.message, 'error');
+      } finally {
+        document.getElementById('applyBtn').disabled = false;
+        setTimeout(() => document.getElementById('progressWrap').classList.remove('active'), 1500);
+      }
+    }
+
+    function clearAll() {
+      srcBytes=null; fileName=''; pdfJsDoc=null; previewDataUrl=null;
+      ['fileInfoBlock','optionsBlock'].forEach(id => document.getElementById(id).style.display='none');
+      document.getElementById('actionBar').style.display='none';
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.remove('active');
+      fileInput.value='';
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progressBar').style.width=pct+'%';
+      document.getElementById('progressLabel').textContent=label;
+    }
+    function formatSize(b) {
+      if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(2)+' MB';
+    }
+    function showToast(msg,type='') {
+      const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+      setTimeout(()=>t.className='toast',3000);
+    }
+  </script>
+</body>
+</html>

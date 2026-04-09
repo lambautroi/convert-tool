@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Xoay PDF - ConvertTool</title>
+  <meta name="description" content="Xoay trang PDF theo hướng bạn muốn, miễn phí." />
+  <link rel="stylesheet" href="../css/style.css" />
+  <style>
+    .page-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:14px; margin-top:20px; }
+    .page-card { background:#fff; border:2px solid var(--border); border-radius:10px; padding:10px; text-align:center; cursor:pointer; transition:border-color .2s; }
+    .page-card.selected { border-color:var(--primary); background:var(--primary-light); }
+    .page-card img { width:100%; aspect-ratio:.7; object-fit:cover; border-radius:6px; display:block; margin-bottom:8px; }
+    .page-card .pg-label { font-size:.8rem; color:var(--text-muted); margin-bottom:6px; }
+    .page-card .rotate-badge { font-size:1.2rem; }
+    .rotate-controls { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:16px; }
+  </style>
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">🔄 Xoay PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Xoay PDF</h1>
+        <p>Chọn trang cần xoay, sau đó nhấn hướng xoay. Có thể xoay từng trang riêng lẻ.</p>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">🔄</div>
+        <h3>Kéo thả file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+
+      <!-- Page grid -->
+      <div id="pageSection" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:20px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-secondary" onclick="selectAll()">Chọn tất cả</button>
+            <button class="btn btn-secondary" onclick="deselectAll()">Bỏ chọn</button>
+            <span id="selLabel" style="font-size:.9rem;color:var(--text-muted)"></span>
+          </div>
+        </div>
+        <div class="rotate-controls">
+          <button class="btn btn-secondary" onclick="rotateSelected(-90)">↺ Xoay trái 90°</button>
+          <button class="btn btn-secondary" onclick="rotateSelected(90)">↻ Xoay phải 90°</button>
+          <button class="btn btn-secondary" onclick="rotateSelected(180)">↕ Xoay 180°</button>
+          <button class="btn btn-secondary" onclick="resetAll()">↩ Reset tất cả</button>
+        </div>
+        <div class="page-grid" id="pageGrid"></div>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa</button>
+        </div>
+        <button class="btn btn-success" id="applyBtn" onclick="applyRotation()">✅ Áp dụng & Tải xuống</button>
+      </div>
+
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Xoay PDF thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống</button>
+          <button class="btn btn-secondary" onclick="clearAll()">Xoay file khác</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer"><div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div></footer>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    const { PDFDocument, degrees } = PDFLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let srcBytes = null, fileName = '', pageRotations = [], selectedPages = new Set(), pdfJsDoc = null;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const f = [...e.dataTransfer.files].find(f => f.type === 'application/pdf');
+      if (f) loadFile(f); else showToast('Vui lòng chọn file PDF', 'error');
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+    async function loadFile(file) {
+      const buf = await file.arrayBuffer();
+      srcBytes = new Uint8Array(buf);
+      fileName = file.name.replace('.pdf','');
+      pdfJsDoc = await pdfjsLib.getDocument({ data: srcBytes.slice() }).promise;
+      const total = pdfJsDoc.numPages;
+      pageRotations = Array(total).fill(0);
+      selectedPages.clear();
+      await renderPageGrid(total);
+      document.getElementById('pageSection').style.display = 'block';
+      document.getElementById('actionBar').style.display = 'flex';
+      document.getElementById('resultSection').classList.remove('active');
+      updateSelLabel();
+    }
+
+    async function renderPageGrid(total) {
+      const grid = document.getElementById('pageGrid');
+      grid.innerHTML = '';
+      for (let i = 0; i < total; i++) {
+        const page = await pdfJsDoc.getPage(i+1);
+        const vp = page.getViewport({ scale: 0.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        const card = document.createElement('div');
+        card.className = 'page-card';
+        card.dataset.idx = i;
+        card.innerHTML = `<img src="${canvas.toDataURL()}" id="thumb_${i}" style="transform:rotate(${pageRotations[i]}deg);transition:transform .3s"/>
+          <div class="pg-label">Trang ${i+1}</div>
+          <div class="rotate-badge" id="badge_${i}">${pageRotations[i] !== 0 ? pageRotations[i]+'°' : '🔲'}</div>`;
+        card.addEventListener('click', () => togglePage(i, card));
+        grid.appendChild(card);
+      }
+    }
+
+    function togglePage(i, card) {
+      if (selectedPages.has(i)) { selectedPages.delete(i); card.classList.remove('selected'); }
+      else { selectedPages.add(i); card.classList.add('selected'); }
+      updateSelLabel();
+    }
+
+    function selectAll() {
+      const cards = document.querySelectorAll('.page-card');
+      cards.forEach((c, i) => { selectedPages.add(i); c.classList.add('selected'); });
+      updateSelLabel();
+    }
+    function deselectAll() {
+      selectedPages.clear();
+      document.querySelectorAll('.page-card').forEach(c => c.classList.remove('selected'));
+      updateSelLabel();
+    }
+    function updateSelLabel() {
+      document.getElementById('selLabel').textContent = selectedPages.size > 0 ? `Đã chọn ${selectedPages.size} trang` : 'Nhấn vào trang để chọn';
+    }
+
+    function rotateSelected(deg) {
+      if (selectedPages.size === 0) { showToast('Chọn ít nhất 1 trang trước', 'error'); return; }
+      selectedPages.forEach(i => {
+        pageRotations[i] = ((pageRotations[i] + deg) % 360 + 360) % 360;
+        const thumb = document.getElementById('thumb_'+i);
+        if (thumb) thumb.style.transform = `rotate(${pageRotations[i]}deg)`;
+        const badge = document.getElementById('badge_'+i);
+        if (badge) badge.textContent = pageRotations[i] !== 0 ? pageRotations[i]+'°' : '🔲';
+      });
+    }
+
+    function resetAll() {
+      pageRotations.fill(0);
+      document.querySelectorAll('[id^=thumb_]').forEach(el => el.style.transform = 'rotate(0deg)');
+      document.querySelectorAll('[id^=badge_]').forEach(el => el.textContent = '🔲');
+    }
+
+    async function applyRotation() {
+      if (!srcBytes) return;
+      document.getElementById('applyBtn').disabled = true;
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.add('active');
+      setProgress(0, 'Đang áp dụng xoay...');
+      try {
+        const doc = await PDFDocument.load(srcBytes);
+        const pages = doc.getPages();
+        pages.forEach((p, i) => {
+          const current = p.getRotation().angle;
+          p.setRotation(degrees((current + pageRotations[i]) % 360));
+        });
+        setProgress(80, 'Đang lưu...');
+        const out = await doc.save();
+        setProgress(100, 'Hoàn thành!');
+        const blob = new Blob([out], { type:'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        document.getElementById('downloadBtn').onclick = () => {
+          const a = document.createElement('a'); a.href=url; a.download=fileName+'_rotated.pdf'; a.click();
+        };
+        document.getElementById('resultDesc').textContent = `${pages.length} trang · ${formatSize(out.byteLength)}`;
+        document.getElementById('resultSection').classList.add('active');
+        showToast('Xoay PDF thành công!', 'success');
+      } catch(err) {
+        showToast('Lỗi: '+err.message, 'error');
+      } finally {
+        document.getElementById('applyBtn').disabled = false;
+        setTimeout(() => document.getElementById('progressWrap').classList.remove('active'), 1500);
+      }
+    }
+
+    function clearAll() {
+      srcBytes=null; fileName=''; pageRotations=[]; selectedPages.clear(); pdfJsDoc=null;
+      document.getElementById('pageSection').style.display='none';
+      document.getElementById('actionBar').style.display='none';
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.remove('active');
+      document.getElementById('pageGrid').innerHTML='';
+      fileInput.value='';
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progressBar').style.width = pct+'%';
+      document.getElementById('progressLabel').textContent = label;
+    }
+    function formatSize(b) {
+      if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(2)+' MB';
+    }
+    function showToast(msg, type='') {
+      const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+      setTimeout(()=>t.className='toast',3000);
+    }
+  </script>
+</body>
+</html>

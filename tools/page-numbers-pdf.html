@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thêm số trang PDF - ConvertTool</title>
+  <meta name="description" content="Thêm số trang vào file PDF miễn phí, tùy chỉnh vị trí và kiểu dáng." />
+  <link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="tool-header">
+    <div class="container">
+      <a href="../index.html" class="back-link">← Về trang chủ</a>
+      <span class="tool-header-title">🔢 Số trang PDF</span>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <div class="container">
+      <div class="tool-title-block">
+        <h1>Thêm số trang vào PDF</h1>
+        <p>Tùy chỉnh vị trí, định dạng và kiểu số trang.</p>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">🔢</div>
+        <h3>Kéo thả file PDF vào đây</h3>
+        <p>hoặc nhấn để chọn file PDF</p>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Chọn file PDF</button>
+        <input type="file" id="fileInput" accept="application/pdf" hidden />
+      </div>
+
+      <div id="fileInfoBlock" style="display:none;margin-top:16px">
+        <div class="file-item" style="cursor:default">
+          <div class="file-thumb-icon">📄</div>
+          <div class="file-info">
+            <div class="file-name" id="pdfName"></div>
+            <div class="file-size" id="pdfMeta"></div>
+          </div>
+          <button class="btn btn-danger" onclick="clearAll()">✕</button>
+        </div>
+      </div>
+
+      <div id="optionsBlock" style="display:none;margin-top:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Vị trí</label>
+            <select id="position" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem">
+              <option value="bottom-center" selected>Dưới · Giữa</option>
+              <option value="bottom-left">Dưới · Trái</option>
+              <option value="bottom-right">Dưới · Phải</option>
+              <option value="top-center">Trên · Giữa</option>
+              <option value="top-left">Trên · Trái</option>
+              <option value="top-right">Trên · Phải</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Định dạng số trang</label>
+            <select id="format" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem">
+              <option value="n">1, 2, 3 ...</option>
+              <option value="of">1 / 10, 2 / 10 ...</option>
+              <option value="page">Trang 1, Trang 2 ...</option>
+              <option value="page-of">Trang 1 / 10, ...</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Bắt đầu từ trang số</label>
+            <input type="number" id="startPage" value="1" min="1" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem" />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Số đầu tiên hiển thị</label>
+            <input type="number" id="startNum" value="1" min="0" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem" />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Cỡ chữ</label>
+            <input type="number" id="fontSize" value="12" min="8" max="24" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;font-size:.9rem" />
+          </div>
+          <div>
+            <label style="font-size:.9rem;font-weight:600;display:block;margin-bottom:6px">Màu chữ</label>
+            <input type="color" id="fontColor" value="#000000" style="width:60px;height:36px;border:1px solid var(--border);border-radius:6px;cursor:pointer" />
+          </div>
+        </div>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-label" id="progressLabel">Đang xử lý...</div>
+      </div>
+
+      <div class="action-bar" id="actionBar" style="display:none">
+        <div class="action-bar-left">
+          <button class="btn btn-secondary" onclick="clearAll()">Xóa</button>
+        </div>
+        <button class="btn btn-success" id="applyBtn" onclick="applyPageNumbers()">🔢 Thêm số trang</button>
+      </div>
+
+      <div class="result-section" id="resultSection">
+        <div class="result-icon">✅</div>
+        <h3>Thêm số trang thành công!</h3>
+        <p id="resultDesc"></p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-success" id="downloadBtn">⬇ Tải xuống</button>
+          <button class="btn btn-secondary" onclick="clearAll()">File khác</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer"><div class="container"><p>© 2026 ConvertTool · Xử lý file trực tiếp trên trình duyệt</p></div></footer>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script>
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
+    let srcBytes = null, fileName = '', totalPages = 0;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      const f = [...e.dataTransfer.files].find(f => f.type === 'application/pdf');
+      if (f) loadFile(f); else showToast('Vui lòng chọn file PDF', 'error');
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+    async function loadFile(file) {
+      const buf = await file.arrayBuffer();
+      srcBytes = new Uint8Array(buf);
+      fileName = file.name.replace('.pdf','');
+      const doc = await PDFDocument.load(srcBytes);
+      totalPages = doc.getPageCount();
+      document.getElementById('pdfName').textContent = file.name;
+      document.getElementById('pdfMeta').textContent = `${formatSize(file.size)} · ${totalPages} trang`;
+      document.getElementById('fileInfoBlock').style.display = 'block';
+      document.getElementById('optionsBlock').style.display = 'block';
+      document.getElementById('actionBar').style.display = 'flex';
+      document.getElementById('startPage').max = totalPages;
+      document.getElementById('resultSection').classList.remove('active');
+    }
+
+    function hexToRgb(hex) {
+      return {
+        r: parseInt(hex.slice(1,3),16)/255,
+        g: parseInt(hex.slice(3,5),16)/255,
+        b: parseInt(hex.slice(5,7),16)/255
+      };
+    }
+
+    async function applyPageNumbers() {
+      if (!srcBytes) return;
+      document.getElementById('applyBtn').disabled = true;
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.add('active');
+      setProgress(0, 'Đang khởi tạo...');
+
+      const position  = document.getElementById('position').value;
+      const format    = document.getElementById('format').value;
+      const startPage = Math.max(1, parseInt(document.getElementById('startPage').value)||1) - 1;
+      const startNum  = parseInt(document.getElementById('startNum').value)||1;
+      const fontSize  = parseInt(document.getElementById('fontSize').value)||12;
+      const color     = hexToRgb(document.getElementById('fontColor').value);
+      const margin    = 24;
+
+      try {
+        const doc  = await PDFDocument.load(srcBytes);
+        const font = await doc.embedFont(StandardFonts.Helvetica);
+        const pages = doc.getPages();
+
+        pages.forEach((page, i) => {
+          if (i < startPage) return;
+          const num = i - startPage + startNum;
+          const { width, height } = page.getSize();
+          let text = '';
+          if (format === 'n') text = `${num}`;
+          else if (format === 'of') text = `${num} / ${totalPages}`;
+          else if (format === 'page') text = `Trang ${num}`;
+          else text = `Trang ${num} / ${totalPages}`;
+
+          const tw = font.widthOfTextAtSize(text, fontSize);
+          let x = 0, y = 0;
+          const [vAlign, hAlign] = position.split('-');
+          y = vAlign === 'bottom' ? margin : height - margin - fontSize;
+          if (hAlign === 'left') x = margin;
+          else if (hAlign === 'right') x = width - tw - margin;
+          else x = (width - tw) / 2;
+
+          page.drawText(text, { x, y, size: fontSize, font, color: rgb(color.r, color.g, color.b) });
+        });
+
+        setProgress(90, 'Đang lưu...');
+        const out = await doc.save();
+        setProgress(100, 'Hoàn thành!');
+
+        const blob = new Blob([out], { type:'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        document.getElementById('downloadBtn').onclick = () => {
+          const a = document.createElement('a'); a.href=url; a.download=fileName+'_numbered.pdf'; a.click();
+        };
+        document.getElementById('resultDesc').textContent = `${totalPages} trang · ${formatSize(out.byteLength)}`;
+        document.getElementById('resultSection').classList.add('active');
+        showToast('Thêm số trang thành công!', 'success');
+      } catch(err) {
+        showToast('Lỗi: '+err.message, 'error');
+      } finally {
+        document.getElementById('applyBtn').disabled = false;
+        setTimeout(() => document.getElementById('progressWrap').classList.remove('active'), 1500);
+      }
+    }
+
+    function clearAll() {
+      srcBytes=null; fileName=''; totalPages=0;
+      ['fileInfoBlock','optionsBlock'].forEach(id => document.getElementById(id).style.display='none');
+      document.getElementById('actionBar').style.display='none';
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('progressWrap').classList.remove('active');
+      fileInput.value='';
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progressBar').style.width=pct+'%';
+      document.getElementById('progressLabel').textContent=label;
+    }
+    function formatSize(b) {
+      if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(2)+' MB';
+    }
+    function showToast(msg,type='') {
+      const t=document.getElementById('toast');t.textContent=msg;t.className='toast show'+(type?' '+type:'');
+      setTimeout(()=>t.className='toast',3000);
+    }
+  </script>
+</body>
+</html>
